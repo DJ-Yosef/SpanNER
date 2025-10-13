@@ -1,34 +1,35 @@
 # encoding: utf-8
 
-
 import torch.nn as nn
-from torch.nn import functional as F
-
+import torch.nn.functional as F
 
 class SingleLinearClassifier(nn.Module):
-    def __init__(self, hidden_size, num_label):
+    """
+    简单的线性分类器，用于最基础的分类任务。
+    输入维度：input_dim
+    输出维度：num_label
+    """
+    def __init__(self, input_dim, num_label):
         super(SingleLinearClassifier, self).__init__()
-        self.num_label = num_label
-        self.classifier = nn.Linear(hidden_size, num_label)
+        self.classifier = nn.Linear(input_dim, num_label)
 
     def forward(self, input_features):
-        features_output = self.classifier(input_features)
-        return features_output
-
+        return self.classifier(input_features)
 
 class MultiNonLinearClassifier(nn.Module):
-    def __init__(self, hidden_size, num_label, dropout_rate):
+    """
+    多层非线性分类器：
+    input_dim -> GELU -> Dropout -> input_dim -> num_label
+    适合复杂任务（如span分类/拼接特征）。
+    """
+    def __init__(self, input_dim, num_label, dropout_rate):
         super(MultiNonLinearClassifier, self).__init__()
-        self.num_label = num_label
-        self.classifier1 = nn.Linear(hidden_size, hidden_size)
-        self.classifier2 = nn.Linear(hidden_size, num_label)
+        self.classifier1 = nn.Linear(input_dim, input_dim)
+        self.classifier2 = nn.Linear(input_dim, num_label)
         self.dropout = nn.Dropout(dropout_rate)
 
     def forward(self, input_features):
-        features_output1 = self.classifier1(input_features)
-        # features_output1 = F.relu(features_output1)
-        features_output1 = F.gelu(features_output1)
-        features_output1 = self.dropout(features_output1)
-
-        features_output2 = self.classifier2(features_output1)
-        return features_output2
+        x = self.classifier1(input_features)
+        x = F.gelu(x)
+        x = self.dropout(x)
+        return self.classifier2(x)

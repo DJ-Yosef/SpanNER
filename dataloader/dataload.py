@@ -1,0 +1,138 @@
+# encoding: utf-8
+
+import json
+import torch
+from torch.utils.data import Dataset
+from transformers import BertTokenizer  # 使用 transformers 版本的 tokenizer
+
+class BERTNERDataset(Dataset):
+    def __init__(
+        self,
+        args,
+        json_path: str,
+        tokenizer: BertTokenizer,
+        max_length: int = 128,
+        possible_only: bool = False,
+        pad_to_maxlen: bool = False
+    ):
+        self.args = args
+        self.tokenizer = tokenizer
+        self.max_length = max_length
+        self.pad_to_maxlen = pad_to_maxlen
+        self.possible_only = possible_only
+        self.all_data = json.load(open(json_path, encoding="utf-8"))
+
+        if self.possible_only:
+            self.all_data = [x for x in self.all_data if x.get("start_position")]
+
+        self.max_span_len = self.args.max_spanLen
+        minus = (self.max_span_len + 1) * self.max_span_len // 2
+        self.max_num_span = self.max_length * self.max_span_len - minus
+        self.dataname = self.args.dataname
+        self.spancase2idx_dic = {}
+
+    def __len__(self):
+        return len(self.all_data)
+
+    def __getitem__(self, idx):
+        data = self.all_data[idx]
+        context = data["sentences"].strip()
+        context = context.replace("\u200b", "").replace("\ufeff", "").replace("　", " ")
+
+        #  支持 ["实体", "标签", [start, end]] 格式
+        ner_list = data.get("ner", [])
+        pos_span_idxs = []
+
+        try:
+            for text, label, span in ner_list:
+                start, end = span
+                if not isinstance(start, int) or not isinstance(end, int):
+                    raise ValueError(f"无效 span: ({start}, {end}) in label={label}")
+                pos_span_idxs.append((start, end))
+        except Exception as e:
+            print(f" 出错样本 index: {idx}")
+            print(f"内容片段: {context}")
+            print(f" ner_list: {ner_list}")
+            raise e
+
+        all_span_idxs = pos_span_idxs
+        all_span_weights = [1.0] * len(all_span_idxs)
+        all_span_lens = [int(e) - int(s) + 1 for s, e in all_span_idxs]
+        morph_idxs = [[0] * self.max_span_len for _ in all_span_idxs]  # 默认全 0
+
+        #  使用 transformers 的 encode_plus
+        encoded = self.tokenizer.encode_plus(
+            context,
+            add_special_tokens=True,
+            max_length=self.max_length,
+            truncation=True,
+            padding='max_length',  # 保证 input_ids 是固定长度
+            return_attention_mask=True,
+            return_token_type_ids=True,
+            return_tensors=None
+        )
+
+        input_ids = torch.tensor(encoded["input_ids"], dtype=torch.long)
+        attention_mask = torch.tensor(encoded["attention_mask"], dtype=torch.long)
+        token_type_ids = torch.tensor(encoded["token_type_ids"], dtype=torch.long)
+        labels = torch.zeros(self.max_length, dtype=torch.long)  # 默认全0作为伪标签
+
+        return {
+            "input_ids": input_ids,
+            "attention_mask": attention_mask,
+            "token_type_ids": token_type_ids,
+            "labels": labels,
+            "span_idxs": all_span_idxs,
+            "span_weights": all_span_weights,
+            "span_lens": all_span_lens,
+            "morph_idxs": morph_idxs,
+        }
+
+    def pad(self, lst, value=0, max_length=None):
+        max_length = max_length or self.max_length
+        while len(lst) < max_length:
+            lst.append(value)
+        return lst
+
+    def case_feature_tokenLevel(self, morph2idx, span_idxs, words):
+        pad_len = self.max_span_len
+        morph_vec = []
+        for s, e in span_idxs:
+            vec = [0] * pad_len
+            for i, token in enumerate(words[s:e + 1]):
+                if token.isupper():
+                    vec[i] = morph2idx.get("isupper", 0)
+                elif token.islower():
+                    vec[i] = morph2idx.get("islower", 0)
+                elif token.istitle():
+                    vec[i] = morph2idx.get("istitle", 0)
+                elif token.isdigit():
+                    vec[i] = morph2idx.get("isdigit", 0)
+                else:
+                    vec[i] = morph2idx.get("other", 0)
+            morph_vec.append(vec)
+        return morph_vec
+
+    def convert2tokenIdx(self, words, tokens, type_ids, offsets, span_idxs, span_idxLab):
+        max_len = self.max_length
+        sidxs = [s + sum(len(w) for w in words[:s]) for s, _ in span_idxs]
+        eidxs = [e + sum(len(w) for w in words[:e + 1]) for _, e in span_idxs]
+
+        span_new_label = {}
+        for (s, e), os_str in zip(zip(sidxs, eidxs), span_idxs):
+            k = f"{os_str[0]};{os_str[1]}"
+            span_new_label[f"{s};{e}"] = span_idxLab.get(k, 'O')
+
+        offset2sidx = {s: i for i, (s, e) in enumerate(offsets) if s != 0 or e != 0}
+        offset2eidx = {e: i for i, (s, e) in enumerate(offsets) if s != 0 or e != 0}
+
+        span_token_idxs = []
+        valid_span_words = []
+        n = 0
+        for s, e in zip(sidxs, eidxs):
+            if s in offset2sidx and e in offset2eidx and offset2eidx[e] < max_len:
+                span_token_idxs.append((offset2sidx[s], offset2eidx[e]))
+                valid_span_words.append(words[span_idxs[n][0]:span_idxs[n][1]+1])
+            n += 1
+        return span_token_idxs, valid_span_words, span_new_label
+        print(f"加载验证样本总数：{len(self.samples)}")

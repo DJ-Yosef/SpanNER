@@ -1,187 +1,135 @@
-import numpy as np
+# encoding: utf-8
+import os
 import json
 import codecs
 from collections import Counter
-import os
 
 
-def get_chunk_type(tok):
-	"""
-	Args:
-		tok: id of token, ex 4
-		idx_to_tag: dictionary {4: "B-PER", ...}
-	Returns:
-		tuple: "B", "PER"
-	"""
-	tag_class = tok.split('-')[0]
-	# tag_type = tok.split('-')[-1]
-	tag_type = '-'.join(tok.split('-')[1:])
-	return tag_class, tag_type
+def get_chunk_type(tag: str):
+    tag_class = tag.split('-')[0]
+    tag_type = '-'.join(tag.split('-')[1:])
+    return tag_class, tag_type
+
 
 def get_chunks(seq):
-	"""
-	tags:dic{'per':1,....}
-	Args:
-		seq: [4, 4, 0, 0, ...] sequence of labels
-		tags: dict["O"] = 4
-	Returns:
-		list of (chunk_type, chunk_start, chunk_end)
+    default = 'O'
+    chunks = []
+    chunk_type, chunk_start = None, None
 
-	Example:
-		seq = [4, 5, 0, 3]
-		tags = {"B-PER": 4, "I-PER": 5, "B-LOC": 3}
-		result = [("PER", 0, 2), ("LOC", 3, 4)]
-	"""
-	default = 'O'
-	chunks = []
-	chunk_type, chunk_start = None, None
-	for i, tok in enumerate(seq):
-		#End of a chunk 1
-		if tok == default and chunk_type is not None:
-			# Add a chunk.
-			chunk = (chunk_type, chunk_start, i)
-			chunks.append(chunk)
-			chunk_type, chunk_start = None, None
+    for i, tag in enumerate(seq):
+        if tag == default:
+            if chunk_type is not None:
+                chunks.append((chunk_type, chunk_start, i))
+                chunk_type, chunk_start = None, None
+        else:
+            tag_class, tag_type = get_chunk_type(tag)
+            if chunk_type is None:
+                chunk_type, chunk_start = tag_type, i
+            elif tag_type != chunk_type or tag_class == "B":
+                chunks.append((chunk_type, chunk_start, i))
+                chunk_type, chunk_start = tag_type, i
 
-		# End of a chunk + start of a chunk!
-		elif tok != default:
-			tok_chunk_class, tok_chunk_type = get_chunk_type(tok)
-			if chunk_type is None:
-				chunk_type, chunk_start = tok_chunk_type, i
-			elif tok_chunk_type != chunk_type or tok_chunk_class == "B":
-				chunk = (chunk_type, chunk_start, i)
-				chunks.append(chunk)
-				chunk_type, chunk_start = tok_chunk_type, i
-		else:
-			pass
-	# end condition
-	if chunk_type is not None:
-		chunk = (chunk_type, chunk_start, len(seq))
-		chunks.append(chunk)
-
-	return chunks
+    if chunk_type is not None:
+        chunks.append((chunk_type, chunk_start, len(seq)))
+    return chunks
 
 
-def keep_spanPred_data(dataname,fpath_bio,column_no,delimiter):
-	word_seqs, trueTag_seqs, word_seqs_sent, trueTag_seqs_sent = read_data(
-		dataname, fpath_bio, column_no=column_no,delimiter =delimiter)  # column_no=3 for ontonotes5.0
+def read_conll_data(filepath, column_no=-1, delimiter=' ', corpus_type='conll03'):
+    word_sequences = []
+    tag_sequences = []
+    sentence_words = []
+    sentence_tags = []
 
-	all_labs = []
-	for tag in trueTag_seqs:
-		if tag!='O':
-			tags = tag.split('-')
-			if len(tags)>2:
-				lab = '-'.join(tags[1:])
-			else:
-				pre,lab  =tag.split('-')
-			all_labs.append(lab)
+    with codecs.open(filepath, 'r', 'utf-8') as f:
+        lines = f.readlines()
+        for line in lines:
+            line = line.strip()
+            if "❤ ️" in line:
+                line = line.replace("❤ ️", "[emoji]")
+            if line == "":
+                if sentence_words:
+                    word_sequences.append(sentence_words)
+                    tag_sequences.append(sentence_tags)
+                    sentence_words, sentence_tags = [], []
+                continue
 
-	counter = Counter(all_labs).most_common()
+            splits = line.split(delimiter)
+            if len(splits) <= column_no:
+                continue
+            word = splits[0].strip()
+            tag = splits[column_no].strip()
 
-	tag_dic = {"O":0}
-	for i,elem in enumerate(counter):
-		tag, c = elem
-		tag_dic[tag] =i+1
-	print(tag_dic)
+            if corpus_type == 'ptb2':
+                tag = 'B-' + tag
+            if word == '❤':
+                word = '[emoji]'
 
+            sentence_words.append(word)
+            sentence_tags.append(tag)
 
-	all_datas = []
-	for i, (tokens,labs) in enumerate(zip(word_seqs_sent, trueTag_seqs_sent)):
-		chunks = get_chunks(labs)
-		context = ' '.join(tokens)
-		if "[emoji]  " in context:
-			print('context: ',context)
-			print('tokens: ', tokens)
+        if sentence_words:
+            word_sequences.append(sentence_words)
+            tag_sequences.append(sentence_tags)
 
-		pos = {}
-		for chunk in chunks:
-			lab, sidx, eidx = chunk
-			key1 = str(sidx) +';'+str(eidx-1)
-			pos[key1] = lab
-
-		one_samp = {
-			"context": context,
-			"span_posLabel": pos
-		}
-
-		all_datas.append(one_samp)
+    return word_sequences, tag_sequences
 
 
-	return all_datas
+def convert_to_spanner_format(words_list, tags_list):
+    all_labels = []
+    for tags in tags_list:
+        for tag in tags:
+            if tag != 'O':
+                parts = tag.split('-')
+                label = '-'.join(parts[1:]) if len(parts) > 2 else parts[-1]
+                all_labels.append(label)
+
+    label_counter = Counter(all_labels)
+    label2idx = {"O": 0}
+    for i, (label, _) in enumerate(label_counter.items(), start=1):
+        label2idx[label] = i
+
+    data = []
+    for tokens, tags in zip(words_list, tags_list):
+        chunks = get_chunks(tags)
+        context = ' '.join(tokens)
+        span_labels = {
+            f"{start};{end - 1}": label
+            for label, start, end in chunks
+        }
+        sample = {
+            "context": context,
+            "span_posLabel": span_labels
+        }
+        data.append(sample)
+    return data, label2idx
 
 
-def read_data(corpus_type, fn, column_no=-1, delimiter =' '):
-	print('corpus_type',corpus_type)
-	word_sequences = list()
-	tag_sequences = list()
-	total_word_sequences = list()
-	total_tag_sequences = list()
-	with codecs.open(fn, 'r', 'utf-8') as f:
-		lines = f.readlines()
-	curr_words = list()
-	curr_tags = list()
-	for k in range(len(lines)):
-		line = lines[k].strip()
-		if "❤ ️" in line:
-			line =line.replace("❤ ️️", "[emoji]")
+def convert_all_files(dataset_name, input_dir, output_dir, suffix_list=["train", "dev", "test"]):
+    if not os.path.exists(output_dir):
+        os.makedirs(output_dir)
 
-		if len(line) == 0: # new sentence or new document
-			if len(curr_words) > 0:
-				word_sequences.append(curr_words)
-				tag_sequences.append(curr_tags)
-				curr_words = list()
-				curr_tags = list()
-			continue
+    if dataset_name == 'ontonote5':
+        column_no, delimiter = 3, ' '
+    elif 'wnut' in dataset_name:
+        column_no, delimiter = 1, '\t'
+    else:
+        column_no, delimiter = -1, ' '
 
-		strings = line.split(delimiter)
-		word = strings[0].strip()
-		tag = strings[column_no].strip()  # be default, we take the last tag
-		if corpus_type=='ptb2':
-			tag='B-'+tag
-		if word =='❤ ':
-			word="[emoji]"
-		word =word.strip()
-		curr_words.append(word)
-		curr_tags.append(tag)
-		total_word_sequences.append(word)
-		total_tag_sequences.append(tag)
-		if k == len(lines) - 1:
-			word_sequences.append(curr_words)
-			tag_sequences.append(curr_tags)
+    for suffix in suffix_list:
+        input_file = os.path.join(input_dir, f"{suffix}.txt")
+        words, tags = read_conll_data(input_file, column_no=column_no, delimiter=delimiter, corpus_type=dataset_name)
+        data, label2idx = convert_to_spanner_format(words, tags)
+        output_file = os.path.join(output_dir, f"spanner.{suffix}")
+        with open(output_file, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        print(f"[✓] Saved: {output_file}")
 
-	return total_word_sequences,total_tag_sequences,word_sequences,tag_sequences
-
-
-
-
-
+    print(f"[✓] label2idx: {label2idx}")
+    return label2idx
 
 
 if __name__ == '__main__':
-	dataname = 'conll03'
-
-	suffixs = ['train', 'dev', 'test']
-	column_no = -1 # tag position
-	delimiter = ' '
-	if dataname =='ontonote5':
-		column_no = 3
-	elif 'wnut' in dataname:
-		column_no =1
-		delimiter = '\t'
-
-	# convsert conll-2003 to spanner format
-	fpath_bio1 = '../data/conll03_bio'
-	dump_path = "../data/conll03v2/"
-
-	if not os.path.exists(dump_path):
-		os.makedirs(dump_path)
-
-	for suffix in suffixs:
-		fpath_bio = fpath_bio1 +'/' +suffix+'.txt'
-
-		all_data = keep_spanPred_data(dataname,fpath_bio, column_no,delimiter)
-		dump_file_path = dump_path + 'spanner.' + suffix
-		with open(dump_file_path, "w") as f:
-			json.dump(all_data, f, sort_keys=True, ensure_ascii=False, indent=2)
-
-
+    dataname = 'conll03'
+    input_path = '../data/conll03_bio'
+    output_path = '../data/conll03_spanner'
+    convert_all_files(dataname, input_path, output_path)

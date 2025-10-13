@@ -1,131 +1,77 @@
 # encoding: utf-8
-
-
 import torch
 import torch.nn as nn
-from transformers import BertModel, BertPreTrainedModel,RobertaModel
-
-from models.classifier import MultiNonLinearClassifier, SingleLinearClassifier
-from allennlp.modules.span_extractors import EndpointSpanExtractor
 from torch.nn import functional as F
+from transformers import BertModel, BertPreTrainedModel, RobertaModel
+from .classifier import MultiNonLinearClassifier, SingleLinearClassifier
+from allennlp.modules.span_extractors import EndpointSpanExtractor
 
 class BertNER(BertPreTrainedModel):
-    def __init__(self, config,args):
+    def __init__(self, config, args):
         super(BertNER, self).__init__(config)
-        self.bert = BertModel(config)
         self.args = args
-        if 'roberta' in self.args.bert_config_dir:
+
+        if 'roberta' in self.args.bert_config_dir.lower():
             self.bert = RobertaModel(config)
-            print('use the roberta pre-trained model...')
+            print('→ 使用 RoBERTa 预训练模型')
+        else:
+            self.bert = BertModel(config)
+            print('→ 使用 BERT 预训练模型')
 
+        self.hidden_size = config.hidden_size
+        self.n_class = args.n_class
+        self.max_span_width = args.max_spanLen
 
-        # self.start_outputs = nn.Linear(config.hidden_size, 2)
-        # self.end_outputs = nn.Linear(config.hidden_size, 2)
+        self.tokenLen_emb_dim = getattr(args, "tokenLen_emb_dim", 25)
+        self.spanLen_emb_dim = getattr(args, "spanLen_emb_dim", 25)
+        self.morph_emb_dim = getattr(args, "morph_emb_dim", 25)
+
+        self._endpoint_span_extractor = EndpointSpanExtractor(
+            input_dim=self.hidden_size,
+            combination=args.span_combination_mode,  # e.g., "x,y,x*y"
+            num_width_embeddings=self.max_span_width,
+            span_width_embedding_dim=self.tokenLen_emb_dim,
+            bucket_widths=True
+        )
+
+        self.spanLen_embedding = nn.Embedding(self.max_span_width + 1, self.spanLen_emb_dim, padding_idx=0)
+        self.morph_embedding = nn.Embedding(len(args.morph2idx_list) + 1, self.morph_emb_dim, padding_idx=0)
+
+        # span_embedding初始化为None，forward时自动创建
+        self.span_embedding = None
+
         self.start_outputs = nn.Linear(config.hidden_size, 1)
         self.end_outputs = nn.Linear(config.hidden_size, 1)
 
-        # self.span_embedding = SingleLinearClassifier(config.hidden_size * 2, 1)
+    def forward(self, span_weights, span_lens, span_idxs,
+                input_ids, attention_mask=None, token_type_ids=None,
+                morph_idxs=None):
+        outputs = self.bert(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
+        sequence_output = outputs[0]  # (bs, seq_len, hidden_size)
 
-        self.hidden_size = config.hidden_size
+        span_feats = self._endpoint_span_extractor(sequence_output, span_idxs.long())
+        features = [span_feats]
 
-        self.span_combination_mode = self.args.span_combination_mode
-        self.max_span_width = args.max_spanLen
-        self.n_class = args.n_class
-        self.tokenLen_emb_dim = self.args.tokenLen_emb_dim # must set, when set a value to the max_span_width.
+        if self.args.use_spanLen:
+            spanlen_emb = F.relu(self.spanLen_embedding(span_lens))
+            features.append(spanlen_emb)
 
-        # if self.args.use_tokenLen:
-        #     self.tokenLen_emb_dim = self.args.tokenLen_emb_dim
-        # else:
-        #     self.tokenLen_emb_dim = None
+        if self.args.use_morph and morph_idxs is not None:
+            morph_emb = self.morph_embedding(morph_idxs)
+            morph_sum = torch.sum(morph_emb, dim=2)  # sum pooling
+            features.append(morph_sum)
 
+        span_feature = torch.cat(features, dim=-1)
+        print(f"→ Forward 拼接后 span_feature.shape[-1] = {span_feature.shape[-1]}")
 
+        # 动态创建 MultiNonLinearClassifier
+        if self.span_embedding is None:
+            print(f"→ 动态创建span分类器，输入维度 = {span_feature.shape[-1]}")
+            self.span_embedding = MultiNonLinearClassifier(
+                span_feature.shape[-1], self.n_class, self.args.model_dropout
+            )
+            # 放到同设备（否则GPU/CPU会报错）
+            self.span_embedding = self.span_embedding.to(span_feature.device)
 
-
-        print("self.max_span_width: ", self.max_span_width)
-        print("self.tokenLen_emb_dim: ", self.tokenLen_emb_dim)
-
-        #  bucket_widths: Whether to bucket the span widths into log-space buckets. If `False`, the raw span widths are used.
-
-        self._endpoint_span_extractor = EndpointSpanExtractor(config.hidden_size,
-                                                              combination=self.span_combination_mode,
-                                                              num_width_embeddings=self.max_span_width,
-                                                              span_width_embedding_dim=self.tokenLen_emb_dim,
-                                                              bucket_widths=True)
-
-
-        self.linear = nn.Linear(10, 1)
-        self.score_func = nn.Softmax(dim=-1)
-
-        # import span-length embedding
-        self.spanLen_emb_dim =args.spanLen_emb_dim
-        self.morph_emb_dim = args.morph_emb_dim
-        input_dim = config.hidden_size * 2 + self.tokenLen_emb_dim
-        if self.args.use_spanLen and not self.args.use_morph:
-            input_dim = config.hidden_size * 2 + self.tokenLen_emb_dim+self.spanLen_emb_dim
-        elif not self.args.use_spanLen and self.args.use_morph:
-            input_dim = config.hidden_size * 2 + self.tokenLen_emb_dim + self.morph_emb_dim
-        elif  self.args.use_spanLen and self.args.use_morph:
-            input_dim = config.hidden_size * 2 + self.tokenLen_emb_dim + self.spanLen_emb_dim + self.morph_emb_dim
-
-
-        self.span_embedding = MultiNonLinearClassifier(input_dim, self.n_class,
-                                                       config.model_dropout)
-
-        self.spanLen_embedding = nn.Embedding(args.max_spanLen+1, self.spanLen_emb_dim, padding_idx=0)
-
-        self.morph_embedding = nn.Embedding(len(args.morph2idx_list) + 1, self.morph_emb_dim, padding_idx=0)
-
-    def forward(self,loadall, all_span_lens, all_span_idxs_ltoken, input_ids, token_type_ids=None, attention_mask=None):
-        """
-        Args:
-            input_ids: bert input tokens, tensor of shape [seq_len]
-            token_type_ids: 0 for query, 1 for context, tensor of shape [seq_len]
-            attention_mask: attention mask, tensor of shape [seq_len]
-            all_span_idxs: the span-idxs on token-level. (bs, n_span)
-            pos_span_mask: 0 for negative span, 1 for the positive span. SHAPE: (bs, n_span)
-            pad_span_mask: 1 for real span, 0 for padding SHAPE: (bs, n_span)
-        Returns:
-            start_logits: start/non-start probs of shape [seq_len]
-            end_logits: end/non-end probs of shape [seq_len]
-            match_logits: start-end-match probs of shape [seq_len, 1]
-        """
-        bert_outputs = self.bert(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
-        sequence_heatmap = bert_outputs[0]  # [batch, seq_len, hidden]
-        all_span_rep = self._endpoint_span_extractor(sequence_heatmap, all_span_idxs_ltoken.long()) # [batch, n_span, hidden]
-        if not self.args.use_spanLen and not self.args.use_morph:
-            # roberta_outputs = self.roberta(input_ids, token_type_ids=token_type_ids, attention_mask=attention_mask)
-            # sequence_heatmap = roberta_outputs[0]  # [batch, seq_len, hidden]
-            #
-            # # get span_representation with different labels.
-            # # put the positive span in the first and use the span_mask to keep the positive span.
-            # # then, for the negative span, we can random sample n_pos_span *2
-            # all_span_rep = self._endpoint_span_extractor(sequence_heatmap, all_span_idxs_ltoken.long())
-            all_span_rep = self.span_embedding(all_span_rep)  # (batch,n_span,n_class)
-
-        elif self.args.use_spanLen and not self.args.use_morph:
-            spanlen_rep = self.spanLen_embedding(all_span_lens) # (bs, n_span, len_dim)
-            spanlen_rep = F.relu(spanlen_rep)
-            all_span_rep = torch.cat((all_span_rep, spanlen_rep), dim=-1)
-            all_span_rep = self.span_embedding(all_span_rep)  # (batch,n_span,n_class)
-        elif not self.args.use_spanLen and self.args.use_morph:
-            morph_idxs = loadall[3]
-            span_morph_rep = self.morph_embedding(morph_idxs) #(bs, n_span, max_spanLen, dim)
-            span_morph_rep = torch.sum(span_morph_rep, dim=2) #(bs, n_span, dim)
-
-            all_span_rep = torch.cat((all_span_rep, span_morph_rep), dim=-1)
-            all_span_rep = self.span_embedding(all_span_rep)  # (batch,n_span,n_class)
-
-        elif self.args.use_spanLen and self.args.use_morph:
-            morph_idxs = loadall[3]
-            span_morph_rep = self.morph_embedding(morph_idxs) #(bs, n_span, max_spanLen, dim)
-            span_morph_rep = torch.sum(span_morph_rep, dim=2) #(bs, n_span, dim)
-
-            spanlen_rep = self.spanLen_embedding(all_span_lens)  # (bs, n_span, len_dim)
-            spanlen_rep = F.relu(spanlen_rep)
-
-            all_span_rep = torch.cat((all_span_rep,spanlen_rep, span_morph_rep), dim=-1)
-            all_span_rep = self.span_embedding(all_span_rep)  # (batch,n_span,n_class)
-
-
-        return all_span_rep
-
+        span_logits = self.span_embedding(span_feature)  # 每个 span 的类别分布
+        return span_logits
