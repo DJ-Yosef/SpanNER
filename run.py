@@ -16,7 +16,8 @@ args = Namespace(
     data_dir="data",
     dataname="spanner",
     # ===== 模型结构参数 =====
-    bert_config_dir="bert-base-chinese",
+    # bert_config_dir="pretrained_model\guwenbert-base",
+    bert_config_dir="pretrained_model\bert-base-chinese",
     n_class=4,
     max_spanLen=10,
     tokenLen_emb_dim=25,

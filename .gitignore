@@ -6,6 +6,7 @@
 
 # Virtualenv
 venv/
+.history/
 
 # Build
 build/
@@ -15,3 +16,6 @@ __pycache__/
 # IDE
 .vscode/
 .idea/
+
+*.zip
+pretrained_model/
