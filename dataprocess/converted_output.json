@@ -1,0 +1,287 @@
+{
+  "text": "曰：韓雲如布，趙雲如牛，楚雲如日，宋雲如車，魯雲如馬，衛雲如犬，周雲如輪，秦雲如行人，魏雲如鼠，齊雲如絳衣，越雲如龍，蜀雲如囷。\n \n曰：牙旗者，將軍之精，凡始豎牙，必以剛日，剛日者，謂上剋下也。立牙之日，吉氣來應，大勝之徵。黃帝出軍決曰：始立牙之日，旗幡指敵，或從風而舉，暉暉絕日，不絕竿，勇氣奔逸。又曰：將軍出兵，有所討伐，引兵出城門，望見白雲及白水者，舉白牙旗，五色牙旗，隨天氣四時。\n \n曰：有雲如丹蛇，隨車后，大戰殺將。又曰：韓雲如布，趙雲如牛，楚雲如日，宋雲如車，魯雲如馬，衛雲如犬，周雲如輪，秦雲如美人，魏雲如鼠，齊雲如絳衣，越雲如龍頭，蜀雲如囷。\n \n曰：雲如雄雉，或如雄雞，臨城，其城必降。\n \n曰：夏出兵，赤旗在前，執前行。\n \n曰：名將望塵，知馬步之多少也。\n \n曰：軍中地生石，將可以久居。\n \n曰：氣聚如龍、如鵠尾者，其下兵軍破敗也。\n \n曰：牙旗者，將軍之精。凡始豎牙必以制日。制日者，謂上克下日也。立牙之日，吉氣來應，大勝之徵；凶氣先應，破軍殺將。\n \n曰：赤幢常在，大將不得動搖。赤者，火也。火，土之母，故軍主長服赤幢。\n \n曰：將軍帳幕無故動，敵人散走。\n \n曰：初出軍行，日三炊，釜不得覆。覆釜，軍敗。\n \n曰：凡候風法，以雞羽重八兩，建五重旗，取羽系其巔，立軍營中。\n \n曰：兩敵相望，其雲氣如牛馬狀，頭低尾仰，曰天狗。勿與戰也。\n \n曰：霧四面圍城，必有兵到城下，不出其月。\n \n曰：軍行，卒見伯勞鳴軍前后，賊來圍吾軍。伯勞鳴軍中，軍分散，有所配屬。\n \n曰：兩敵相當，鶉集壁上軍，士五日敗。\n",
+  "entities": [
+    {
+      "start": 69,
+      "end": 71,
+      "label": "tool",
+      "text": "牙旗"
+    },
+    {
+      "start": 85,
+      "end": 87,
+      "label": "concept",
+      "text": "剛日"
+    },
+    {
+      "start": 88,
+      "end": 90,
+      "label": "concept",
+      "text": "剛日"
+    },
+    {
+      "start": 98,
+      "end": 100,
+      "label": "concept",
+      "text": "立牙"
+    },
+    {
+      "start": 103,
+      "end": 105,
+      "label": "concept",
+      "text": "吉氣"
+    },
+    {
+      "start": 113,
+      "end": 118,
+      "label": "concept",
+      "text": "黃帝出軍決"
+    },
+    {
+      "start": 126,
+      "end": 128,
+      "label": "tool",
+      "text": "旗幡"
+    },
+    {
+      "start": 180,
+      "end": 183,
+      "label": "tool",
+      "text": "白牙旗"
+    },
+    {
+      "start": 184,
+      "end": 188,
+      "label": "tool",
+      "text": "五色牙旗"
+    },
+    {
+      "start": 203,
+      "end": 205,
+      "label": "breed",
+      "text": "丹蛇"
+    },
+    {
+      "start": 218,
+      "end": 220,
+      "label": "concept",
+      "text": "韓雲"
+    },
+    {
+      "start": 223,
+      "end": 225,
+      "label": "concept",
+      "text": "趙雲"
+    },
+    {
+      "start": 228,
+      "end": 230,
+      "label": "concept",
+      "text": "楚雲"
+    },
+    {
+      "start": 233,
+      "end": 235,
+      "label": "concept",
+      "text": "宋雲"
+    },
+    {
+      "start": 238,
+      "end": 240,
+      "label": "concept",
+      "text": "魯雲"
+    },
+    {
+      "start": 243,
+      "end": 245,
+      "label": "concept",
+      "text": "衛雲"
+    },
+    {
+      "start": 248,
+      "end": 250,
+      "label": "concept",
+      "text": "周雲"
+    },
+    {
+      "start": 253,
+      "end": 255,
+      "label": "concept",
+      "text": "秦雲"
+    },
+    {
+      "start": 259,
+      "end": 261,
+      "label": "concept",
+      "text": "魏雲"
+    },
+    {
+      "start": 264,
+      "end": 266,
+      "label": "concept",
+      "text": "齊雲"
+    },
+    {
+      "start": 270,
+      "end": 272,
+      "label": "concept",
+      "text": "越雲"
+    },
+    {
+      "start": 276,
+      "end": 278,
+      "label": "concept",
+      "text": "蜀雲"
+    },
+    {
+      "start": 313,
+      "end": 315,
+      "label": "tool",
+      "text": "赤旗"
+    },
+    {
+      "start": 333,
+      "end": 335,
+      "label": "concept",
+      "text": "馬步"
+    },
+    {
+      "start": 365,
+      "end": 366,
+      "label": "concept",
+      "text": "龍"
+    },
+    {
+      "start": 368,
+      "end": 370,
+      "label": "concept",
+      "text": "鵠尾"
+    },
+    {
+      "start": 385,
+      "end": 387,
+      "label": "tool",
+      "text": "牙旗"
+    },
+    {
+      "start": 396,
+      "end": 398,
+      "label": "concept",
+      "text": "豎牙"
+    },
+    {
+      "start": 400,
+      "end": 402,
+      "label": "concept",
+      "text": "制日"
+    },
+    {
+      "start": 403,
+      "end": 405,
+      "label": "concept",
+      "text": "制日"
+    },
+    {
+      "start": 409,
+      "end": 410,
+      "label": "usage",
+      "text": "克"
+    },
+    {
+      "start": 419,
+      "end": 421,
+      "label": "concept",
+      "text": "吉氣"
+    },
+    {
+      "start": 429,
+      "end": 431,
+      "label": "concept",
+      "text": "凶氣"
+    },
+    {
+      "start": 444,
+      "end": 446,
+      "label": "tool",
+      "text": "赤幢"
+    },
+    {
+      "start": 473,
+      "end": 475,
+      "label": "tool",
+      "text": "赤幢"
+    },
+    {
+      "start": 483,
+      "end": 485,
+      "label": "tool",
+      "text": "帳幕"
+    },
+    {
+      "start": 506,
+      "end": 507,
+      "label": "concept",
+      "text": "炊"
+    },
+    {
+      "start": 508,
+      "end": 509,
+      "label": "tool",
+      "text": "釜"
+    },
+    {
+      "start": 514,
+      "end": 515,
+      "label": "tool",
+      "text": "釜"
+    },
+    {
+      "start": 525,
+      "end": 528,
+      "label": "skill",
+      "text": "候風法"
+    },
+    {
+      "start": 530,
+      "end": 532,
+      "label": "breed",
+      "text": "雞羽"
+    },
+    {
+      "start": 537,
+      "end": 540,
+      "label": "breed",
+      "text": "五重旗"
+    },
+    {
+      "start": 576,
+      "end": 578,
+      "label": "concept",
+      "text": "天狗"
+    },
+    {
+      "start": 617,
+      "end": 619,
+      "label": "breed",
+      "text": "伯勞"
+    },
+    {
+      "start": 630,
+      "end": 632,
+      "label": "breed",
+      "text": "伯勞"
+    },
+    {
+      "start": 655,
+      "end": 656,
+      "label": "breed",
+      "text": "鶉"
+    },
+    {
+      "start": 664,
+      "end": 665,
+      "label": "usage",
+      "text": "敗"
+    }
+  ]
+}
