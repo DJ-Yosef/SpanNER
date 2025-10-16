@@ -117,3 +117,37 @@ dataloader/dataload.py（数据解析/预处理）
 dataloader/collate_functions.py（collate 和 padding 对齐）
 只要你的数据文件、collate 返回的 tensor 维度都是一致且合理的，这类 shape 报错基本都能解决。
 
+## DJ接手工作
+### 结构
+
+
+### 干什么
+* 数据格式不一致，需要修改dataloader/dataload.py文件。
+```json
+[
+    {
+        "sentences": "阿里巴巴集团位于中国杭州。",
+        "ner": [
+            ["阿里巴巴集团", "ORGANIZATION", [0, 5]],
+            ["中国", "COUNTRY", [8, 9]],
+            ["杭州", "CITY", [10, 11]]
+        ]
+    },...
+]
+```
+实际train.json文件格式
+```json
+[
+  {
+    "sentences": "陳平少時家貧，好讀書，治黃帝老子之術，宛田三十畝，與伯居，伯常耕，陳平耕，經平使游學。",
+    "ner": [
+      [12, 17, "技術"],
+      [14, 13, "概念"],
+      [13, 14, "概念"],
+      [20, 20, "工具"]
+    ]
+  },...
+]
+```
+同时，吾与点标注格式也需要转换为这个格式
+*

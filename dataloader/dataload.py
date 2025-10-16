@@ -35,6 +35,8 @@ class BERTNERDataset(Dataset):
         return len(self.all_data)
 
     def __getitem__(self, idx):
+        """获取数据集中的一个样本时，自动检查格式错误，
+        并构造输入、标签、遮罩等数据，和原文一起返回。"""
         data = self.all_data[idx]
         context = data["sentences"].strip()
         context = context.replace("\u200b", "").replace("\ufeff", "").replace("　", " ")
@@ -43,11 +45,13 @@ class BERTNERDataset(Dataset):
         ner_list = data.get("ner", [])
         pos_span_idxs = []
 
-        try:
+        try: # 处理非法的 span
             for text, label, span in ner_list:
                 start, end = span
                 if not isinstance(start, int) or not isinstance(end, int):
                     raise ValueError(f"无效 span: ({start}, {end}) in label={label}")
+                if context[start:end+1] != text:
+                    raise ValueError(f"实体 {text} 与上下文不匹配: {context[start:end+1]}")
                 pos_span_idxs.append((start, end))
         except Exception as e:
             print(f" 出错样本 index: {idx}")
@@ -56,11 +60,12 @@ class BERTNERDataset(Dataset):
             raise e
 
         all_span_idxs = pos_span_idxs
-        all_span_weights = [1.0] * len(all_span_idxs)
-        all_span_lens = [int(e) - int(s) + 1 for s, e in all_span_idxs]
-        morph_idxs = [[0] * self.max_span_len for _ in all_span_idxs]  # 默认全 0
+        all_span_weights = [1.0] * len(all_span_idxs) # 权重默认全部为 1.0
+        all_span_lens = [int(e) - int(s) + 1 for s, e in all_span_idxs] # 实体长度
+        morph_idxs = [[0] * self.max_span_len for _ in all_span_idxs]  # 生成默认全 0 的向量
 
-        #  使用 transformers 的 encode_plus
+        #  使用 transformers 的 encode_plus 将句子编码为 BERT 所需的格式
+        #  生成 输入, 遮罩, 标签
         encoded = self.tokenizer.encode_plus(
             context,
             add_special_tokens=True,
@@ -82,6 +87,7 @@ class BERTNERDataset(Dataset):
             "attention_mask": attention_mask,
             "token_type_ids": token_type_ids,
             "labels": labels,
+
             "span_idxs": all_span_idxs,
             "span_weights": all_span_weights,
             "span_lens": all_span_lens,
@@ -89,12 +95,16 @@ class BERTNERDataset(Dataset):
         }
 
     def pad(self, lst, value=0, max_length=None):
+        """用指定值 value 填充列表到指定长度"""
         max_length = max_length or self.max_length
         while len(lst) < max_length:
             lst.append(value)
         return lst
 
     def case_feature_tokenLevel(self, morph2idx, span_idxs, words):
+        """特征生成函数：
+        生成每个命名实体跨度的形态特征向量，如是否为大写、小写、标题等。
+        需要传入一个形态特征到索引的映射字典 morph2idx、命名实体的跨度索引 span_idxs 和原始句子分词后的 words。"""
         pad_len = self.max_span_len
         morph_vec = []
         for s, e in span_idxs:
