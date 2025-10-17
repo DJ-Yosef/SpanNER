@@ -1,7 +1,7 @@
-torch==1.6
+allennlp
+torch
 pytorch-lightning>=0.9.0
 tokenizers
 transformers
-numpy
-scipy
-scikit-learn
+numpy<2
+

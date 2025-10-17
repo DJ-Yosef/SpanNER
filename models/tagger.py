@@ -4,7 +4,8 @@ import argparse
 from torch.utils.data import DataLoader
 from pytorch_lightning import LightningModule
 from torch.optim import SGD
-from transformers import BertTokenizer, AdamW
+from transformers import BertTokenizer #, AdamW #AdamW 在4.5.0版本中被移除
+from torch.optim import AdamW
 
 from dataloader.dataload import BERTNERDataset
 from dataloader.truncate_dataset import TruncateDataset
@@ -149,7 +150,7 @@ class BertNerTagger(LightningModule):
         return self.get_dataloader("train")
 
     def val_dataloader(self):
-        return self.get_dataloader("dev.json")
+        return self.get_dataloader("dev")
 
     def test_dataloader(self):
         return self.get_dataloader("test")

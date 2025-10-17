@@ -4,7 +4,7 @@ import os
 from typing import Dict
 import pytorch_lightning as pl
 import torch
-from models.tagger import BertNerTagger  
+from models.tagger import BertNerTagger
 from pytorch_lightning import Trainer
 from pytorch_lightning.callbacks.model_checkpoint import ModelCheckpoint
 from transformers import BertTokenizer
@@ -31,7 +31,7 @@ def train(args, config, tokenizer):
     model = BertNerTagger(args)
     trainer = pl.Trainer(
         max_epochs=args.epochs,
-        gpus=args.gpus,
+        # gpus=args.gpus,
         accumulate_grad_batches=args.accumulate_grad_batches,
         logger=False
     )

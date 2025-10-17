@@ -10,14 +10,14 @@ from trainer import train
 args = Namespace(
     # ===== 数据参数 =====
     bert_max_length=128,
-    train_file="data/train.json",
-    dev_file="data/dev.json",
-    test_file="data/test.json",
-    data_dir="data",
+    # train_file="data/test1/train.json",
+    # dev_file="data/test1/dev.json",
+    # test_file="data/test1/test.json",
+    data_dir="data/test1",
     dataname="spanner",
     # ===== 模型结构参数 =====
-    # bert_config_dir="pretrained_model\guwenbert-base",
-    bert_config_dir="pretrained_model\bert-base-chinese",
+    # bert_config_dir=r"pretrained_model/guwenbert-base",
+    bert_config_dir=r"pretrained_model/bert-base-chinese",
     n_class=4,
     max_spanLen=10,
     tokenLen_emb_dim=25,
@@ -29,12 +29,13 @@ args = Namespace(
     model_dropout=0.1,
     # ===== 输出路径 =====
     fp_epoch_result="outputs/epoch_result.txt",
-    # ===== 训练控制参数 =====
     batch_size=8,
     epochs=5,
     max_epochs=10,
     lr=3e-5,
-    gpus=0,  # 如果用GPU：设置为 accelerator="gpu", devices=1
+    gpus=1,  # 如果用GPU：设置为 accelerator="gpu", devices=1
+    accelerator="gpu",
+    devices=1,
     accumulate_grad_batches=1,
     warmup_steps=200,
     final_div_factor=1e4,
