@@ -1,53 +1,56 @@
-import os
+import pytorch_lightning as pl
 import torch
-import argparse
+from torch.optim import AdamW, SGD
 from torch.utils.data import DataLoader
-from pytorch_lightning import LightningModule
-from torch.optim import SGD
-from transformers import BertTokenizer #, AdamW #AdamW 在4.5.0版本中被移除
-from torch.optim import AdamW
-
-from dataloader.dataload import BERTNERDataset
-from dataloader.truncate_dataset import TruncateDataset
-from dataloader.collate_functions import collate_to_max_length
 from models.bert_model_spanner import BertNER
-from config_spanner import BertNerConfig
+from dataloader.collate_functions import collate_to_max_length
 
-class BertNerTagger(LightningModule):
-    def __init__(self, args=None, **kwargs):
-        super().__init__()
+class BertNerTagger(pl.LightningModule):
+    def __init__(self, args):
+        super(BertNerTagger, self).__init__()
+        self.hparams = args
 
-        if args is not None:
-            self.save_hyperparameters(vars(args))
-        else:
-            self.save_hyperparameters(kwargs)
+        # 确保 bert_max_length 属性存在
+        self.hparams.bert_max_length = getattr(args, "bert_max_length", 128)  # 默认值为 128
 
-        self.bert_dir = self.hparams.bert_config_dir
-        self.data_dir = self.hparams.data_dir
+        self.bert_model = BertNER.from_pretrained(args.pretrained_bert_model, args=args)
+        self.hidden_size = self.bert_model.config.hidden_size
+        self.max_span_width = args.max_span_width
+        self.tokenLen_emb_dim = getattr(args, "tokenLen_emb_dim", 25)
+        self.spanLen_emb_dim = getattr(args, "spanLen_emb_dim", 25)
+        self.morph_emb_dim = getattr(args, "morph_emb_dim", 25)
 
-        bert_config = BertNerConfig.from_pretrained(
-            self.bert_dir,
-            hidden_dropout_prob=self.hparams.model_dropout,
-            attention_probs_dropout_prob=self.hparams.model_dropout,
-            model_dropout=self.hparams.model_dropout
+        self._endpoint_span_extractor = EndpointSpanExtractor(
+            input_dim=self.hidden_size,
+            combination=args.span_combination_mode,  # e.g., "x,y,x*y"
+            num_width_embeddings=self.max_span_width,
+            span_width_embedding_dim=self.tokenLen_emb_dim,
+            bucket_widths=True
         )
 
-        self.model = BertNER.from_pretrained(
-            self.bert_dir,
-            config=bert_config,
-            args=self.hparams
-        )
+        self.spanLen_embedding = nn.Embedding(self.max_span_width + 1, self.spanLen_emb_dim, padding_idx=0)
+        self.morph_embedding = nn.Embedding(len(args.morph2idx_list) + 1, self.morph_emb_dim, padding_idx=0)
 
-        self.optimizer = self.hparams.optimizer
-        self.n_class = self.hparams.n_class
-        self.max_spanLen = self.hparams.max_spanLen
-        self.cross_entropy = torch.nn.CrossEntropyLoss(reduction='none')
-        self.classifier = torch.nn.Softmax(dim=-1)
+        # span_embedding初始化为None，forward时自动创建
 
-        self.fwrite_epoch_res = open(self.hparams.fp_epoch_result, 'w', encoding='utf-8')
-        self.fwrite_epoch_res.write("f1, recall, precision, correct_pred, total_pred, total_golden\n")
+    def forward(self, input_ids, attention_mask, token_type_ids, span_indices, span_indices_mask, morph_indices):
+        # 前向传播逻辑
+        sequence_output = self.bert_model(input_ids=input_ids, attention_mask=attention_mask, token_type_ids=token_type_ids)[0]
+        span_embeddings = self._endpoint_span_extractor(sequence_output, span_indices, span_indices_mask)
+        spanLen_embeddings = self.spanLen_embedding(span_indices_mask.long().sum(dim=-1))
+        morph_embeddings = self.morph_embedding(morph_indices)
+
+        # 组合所有嵌入
+        combined_embeddings = torch.cat([span_embeddings, spanLen_embeddings, morph_embeddings], dim=-1)
+
+        # 计算输出
+        start_outputs = self.start_outputs(combined_embeddings)
+        end_outputs = self.end_outputs(combined_embeddings)
+
+        return start_outputs, end_outputs
 
     def configure_optimizers(self):
+        # 优化器配置
         no_decay = ["bias", "LayerNorm.weight"]
         optimizer_grouped_parameters = [
             {
@@ -60,7 +63,10 @@ class BertNerTagger(LightningModule):
             },
         ]
 
-        if self.optimizer == "adamw":
+        num_gpus = len([x for x in str(self.hparams.gpus).split(",") if x.strip()])
+        t_total = (len(self.train_dataloader()) // (self.hparams.accumulate_grad_batches * max(1, num_gpus)) + 1) * self.hparams.max_epochs
+
+        if self.hparams.optimizer == "adamw":
             optimizer = AdamW(
                 optimizer_grouped_parameters,
                 betas=(0.9, 0.98),
@@ -70,81 +76,17 @@ class BertNerTagger(LightningModule):
         else:
             optimizer = SGD(optimizer_grouped_parameters, lr=self.hparams.lr, momentum=0.9)
 
-        num_gpus = len([x for x in str(self.hparams.gpus).split(",") if x.strip()])
-        t_total = (len(self.train_dataloader()) // (self.hparams.accumulate_grad_batches * max(1, num_gpus)) + 1) * self.hparams.max_epochs
-
         scheduler = torch.optim.lr_scheduler.OneCycleLR(
             optimizer,
             max_lr=self.hparams.lr,
-            pct_start=self.hparams.warmup_ratio,
-            final_div_factor=self.hparams.final_div_factor,
             total_steps=t_total,
-            anneal_strategy='linear'
+            pct_start=0.1,
+            anneal_strategy="cos",
+            div_factor=25,
+            final_div_factor=10000.0,
         )
 
         return [optimizer], [{"scheduler": scheduler, "interval": "step"}]
-
-    def forward(self, span_weights, span_lens, span_idxs, input_ids, attention_mask, token_type_ids, morph_idxs=None):
-        return self.model(span_weights, span_lens, span_idxs, input_ids, attention_mask, token_type_ids, morph_idxs)
-
-    def training_step(self, batch, batch_idx):
-        input_ids = batch["input_ids"]
-        attention_mask = batch["attention_mask"]
-        token_type_ids = batch["token_type_ids"]
-        labels = batch["labels"]
-        span_idxs = batch["span_idxs"]
-        span_lens = batch["span_lens"]
-        span_weights = batch["span_weights"]
-        morph_idxs = batch.get("morph_idxs", None)
-
-        logits = self.forward(span_weights, span_lens, span_idxs, input_ids, attention_mask, token_type_ids, morph_idxs)
-        loss = torch.nn.functional.cross_entropy(
-            logits.view(-1, self.n_class),
-            labels.view(-1),
-            ignore_index=-100
-        )
-        self.log("train_loss", loss, prog_bar=True, on_step=True, on_epoch=True)
-        return loss
-
-    def validation_step(self, batch, batch_idx):
-        input_ids = batch["input_ids"]
-        attention_mask = batch["attention_mask"]
-        token_type_ids = batch["token_type_ids"]
-        labels = batch["labels"]
-        span_idxs = batch["span_idxs"]
-        span_lens = batch["span_lens"]
-        span_weights = batch["span_weights"]
-        morph_idxs = batch.get("morph_idxs", None)
-
-        logits = self.forward(span_weights, span_lens, span_idxs, input_ids, attention_mask, token_type_ids, morph_idxs)
-        loss = torch.nn.functional.cross_entropy(
-            logits.view(-1, self.n_class),
-            labels.view(-1),
-            ignore_index=-100
-        )
-        self.log("val_loss", loss, prog_bar=True, on_step=False, on_epoch=True)
-        return loss
-
-    def get_dataloader(self, prefix="train", limit: int = None) -> DataLoader:
-        json_path = os.path.join(self.data_dir, f"spanner.{prefix}")
-        tokenizer = BertTokenizer.from_pretrained(self.bert_dir)
-        dataset = BERTNERDataset(
-            self.hparams,
-            json_path=json_path,
-            tokenizer=tokenizer,
-            max_length=self.hparams.bert_max_length,
-            pad_to_maxlen=False
-        )
-        if limit is not None:
-            dataset = TruncateDataset(dataset, limit)
-        dataloader = DataLoader(
-            dataset=dataset,
-            batch_size=self.hparams.batch_size,
-            shuffle=True if prefix == "train" else False,
-            drop_last=False,
-            collate_fn=collate_to_max_length
-        )
-        return dataloader
 
     def train_dataloader(self):
         return self.get_dataloader("train")
@@ -152,5 +94,116 @@ class BertNerTagger(LightningModule):
     def val_dataloader(self):
         return self.get_dataloader("dev")
 
-    def test_dataloader(self):
-        return self.get_dataloader("test")
+    def get_dataloader(self, split: str):
+        dataset = BERTNERDataset(
+            data_path=self.hparams.data_path,
+            split=split,
+            tokenizer=self.tokenizer,
+            max_length=self.hparams.bert_max_length,
+            possible_only=True,  # 确保只包含有效的 span
+        )
+        dataloader = DataLoader(
+            dataset,
+            batch_size=self.hparams.batch_size,
+            shuffle=(split == "train"),
+            num_workers=self.hparams.num_workers,
+            collate_fn=collate_to_max_length,
+        )
+        return dataloader
+
+    def prepare_data(self):
+        # 准备数据逻辑
+        pass
+
+    def training_step(self, batch, batch_idx):
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        token_type_ids = batch["token_type_ids"]
+        labels = batch["labels"]
+        span_indices = batch["span_idxs"]
+        span_indices_mask = batch["span_lens"]
+        morph_indices = batch["morph_idxs"]
+
+        start_outputs, end_outputs = self.forward(input_ids, attention_mask, token_type_ids, span_indices, span_indices_mask, morph_indices)
+
+        # 计算 loss
+        start_loss = torch.nn.functional.cross_entropy(
+            start_outputs.view(-1, start_outputs.size(-1)),
+            labels.view(-1),
+            weight=self.loss_weight,
+            ignore_index=self.ignore_index,
+            reduction="mean"
+        )
+        end_loss = torch.nn.functional.cross_entropy(
+            end_outputs.view(-1, end_outputs.size(-1)),
+            labels.view(-1),
+            weight=self.loss_weight,
+            ignore_index=self.ignore_index,
+            reduction="mean"
+        )
+        loss = start_loss + end_loss
+
+        self.log("train_loss", loss)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        token_type_ids = batch["token_type_ids"]
+        labels = batch["labels"]
+        span_indices = batch["span_idxs"]
+        span_indices_mask = batch["span_lens"]
+        morph_indices = batch["morph_idxs"]
+
+        start_outputs, end_outputs = self.forward(input_ids, attention_mask, token_type_ids, span_indices, span_indices_mask, morph_indices)
+
+        # 计算 loss
+        start_loss = torch.nn.functional.cross_entropy(
+            start_outputs.view(-1, start_outputs.size(-1)),
+            labels.view(-1),
+            weight=self.loss_weight,
+            ignore_index=self.ignore_index,
+            reduction="mean"
+        )
+        end_loss = torch.nn.functional.cross_entropy(
+            end_outputs.view(-1, end_outputs.size(-1)),
+            labels.view(-1),
+            weight=self.loss_weight,
+            ignore_index=self.ignore_index,
+            reduction="mean"
+        )
+        loss = start_loss + end_loss
+
+        self.log("val_loss", loss)
+        return loss
+
+    def test_step(self, batch, batch_idx):
+        input_ids = batch["input_ids"]
+        attention_mask = batch["attention_mask"]
+        token_type_ids = batch["token_type_ids"]
+        labels = batch["labels"]
+        span_indices = batch["span_idxs"]
+        span_indices_mask = batch["span_lens"]
+        morph_indices = batch["morph_idxs"]
+
+        start_outputs, end_outputs = self.forward(input_ids, attention_mask, token_type_ids, span_indices, span_indices_mask, morph_indices)
+
+        # 计算 loss
+        start_loss = torch.nn.functional.cross_entropy(
+            start_outputs.view(-1, start_outputs.size(-1)),
+            labels.view(-1),
+            weight=self.loss_weight,
+            ignore_index=self.ignore_index,
+            reduction="mean"
+        )
+        end_loss = torch.nn.functional.cross_entropy(
+            end_outputs.view(-1, end_outputs.size(-1)),
+            labels.view(-1),
+            weight=self.loss_weight,
+            ignore_index=self.ignore_index,
+            reduction="mean"
+        )
+        loss = start_loss + end_loss
+
+        self.log("test_loss", loss)
+        return loss
