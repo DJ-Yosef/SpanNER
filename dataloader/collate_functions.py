@@ -10,7 +10,7 @@ def collate_to_max_length(batch):
     max_num_span = max(len(x["morph_idxs"]) for x in batch)
 
     # 单个 span 的最大长度
-    max_span_len = len(batch[0]["morph_idxs"][0]) if batch[0]["morph_idxs"] else 0
+    max_span_len = max(len(morph_idxs[0]) for morph_idxs in (x["morph_idxs"] for x in batch if x["morph_idxs"])) if max_num_span > 0 else 0
 
     batch_input_ids = []
     batch_attention_mask = []
@@ -46,7 +46,18 @@ def collate_to_max_length(batch):
         batch_span_idxs.append(torch.tensor(span_idxs + [(0, 0)] * pad_span))
         batch_span_weights.append(torch.tensor(span_weights + [0.0] * pad_span))
         batch_span_lens.append(torch.tensor(span_lens + [0] * pad_span))
-        batch_morph_idxs.append(torch.tensor(morph_idxs + [[0] * max_span_len for _ in range(pad_span)]))
+
+        # 处理 morph_idxs 为空的情况
+        if morph_idxs:
+            batch_morph_idxs.append(torch.tensor(morph_idxs + [[0] * max_span_len for _ in range(pad_span)]))
+        else:
+            batch_morph_idxs.append(torch.zeros(max_num_span, max_span_len, dtype=torch.long))
+
+    # 调试信息
+    print(f"max_length: {max_length}")
+    print(f"max_num_span: {max_num_span}")
+    print(f"max_span_len: {max_span_len}")
+    print(f"batch_morph_idxs: {batch_morph_idxs}")
 
     return {
         "input_ids": torch.stack(batch_input_ids),
