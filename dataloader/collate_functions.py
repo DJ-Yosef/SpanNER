@@ -53,17 +53,12 @@ def collate_to_max_length(batch):
         else:
             batch_morph_idxs.append(torch.zeros(max_num_span, max_span_len, dtype=torch.long))
 
-    # 调试信息
-    print(f"max_length: {max_length}")
-    print(f"max_num_span: {max_num_span}")
-    print(f"max_span_len: {max_span_len}")
-    print(f"batch_morph_idxs: {batch_morph_idxs}")
-
     return {
         "input_ids": torch.stack(batch_input_ids),
         "attention_mask": torch.stack(batch_attention_mask),
         "token_type_ids": torch.stack(batch_token_type_ids),
         "labels": torch.stack(batch_labels),
+
         "span_idxs": torch.stack(batch_span_idxs),
         "span_weights": torch.stack(batch_span_weights),
         "span_lens": torch.stack(batch_span_lens),

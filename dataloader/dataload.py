@@ -35,37 +35,36 @@ class BERTNERDataset(Dataset):
         return len(self.all_data)
 
     def __getitem__(self, idx):
-        """获取数据集中的一个样本时，自动检查格式错误，
-        并构造输入、标签、遮罩等数据，和原文一起返回。"""
+        """获取数据集中的一个样本时，自动检查格式错误，并构造输入、标签、遮罩等数据，和原文一起返回。"""
         data = self.all_data[idx]
         context = data["sentences"].strip()
         context = context.replace("\u200b", "").replace("\ufeff", "").replace("　", " ")
 
-        #  支持 ["实体", "标签", [start, end]] 格式
+        # 支持 ["实体", "标签", [start, end]] 格式
         ner_list = data.get("ner", [])
         pos_span_idxs = []
 
-        try: # 处理非法的 span
+        try:  # 处理非法的 span
             for text, label, span in ner_list:
                 start, end = span
                 if not isinstance(start, int) or not isinstance(end, int):
                     raise ValueError(f"无效 span: ({start}, {end}) in label={label}")
-                if context[start:end+1] != text:
-                    raise ValueError(f"实体 {text} 与上下文不匹配: {context[start:end+1]}")
+                if context[start:end + 1] != text:
+                    raise ValueError(f"实体 {text} 与上下文不匹配: {context[start:end + 1]}")
                 pos_span_idxs.append((start, end))
         except Exception as e:
-            print(f" 出错样本 index: {idx}")
+            print(f"出错样本 index: {idx}")
             print(f"内容片段: {context}")
-            print(f" ner_list: {ner_list}")
+            print(f"ner_list: {ner_list}")
             raise e
 
         all_span_idxs = pos_span_idxs
-        all_span_weights = [1.0] * len(all_span_idxs) # 权重默认全部为 1.0
-        all_span_lens = [int(e) - int(s) + 1 for s, e in all_span_idxs] # 实体长度
+        all_span_weights = [1.0] * len(all_span_idxs)  # 权重默认全部为 1.0
+        all_span_lens = [int(e) - int(s) + 1 for s, e in all_span_idxs]  # 实体长度
         morph_idxs = [[0] * self.max_span_len for _ in all_span_idxs]  # 生成默认全 0 的向量
 
-        #  使用 transformers 的 encode_plus 将句子编码为 BERT 所需的格式
-        #  生成 输入, 遮罩, 标签
+        # 使用 transformers 的 encode_plus 将句子编码为 BERT 所需的格式
+        # 生成 输入, 遮罩, 标签
         encoded = self.tokenizer.encode_plus(
             context,
             add_special_tokens=True,
@@ -82,8 +81,15 @@ class BERTNERDataset(Dataset):
         token_type_ids = torch.tensor(encoded["token_type_ids"], dtype=torch.long)
         labels = torch.zeros(self.max_length, dtype=torch.long)  # 默认全0作为伪标签
 
+        # # 填充 labels
+        # for (start, end), label in zip(all_span_idxs, all_span_lens):
+        #     start_idx = encoded["input_ids"].index(self.tokenizer.cls_token_id) + 1 + start
+        #     end_idx = start_idx + label - 1
+        #     if start_idx < self.max_length and end_idx < self.max_length:
+        #         labels[start_idx:end_idx + 1] = self.args.label2idx.get(label, 0)
+
         return {
-            "input_ids": input_ids,
+            "input_ids": input_ids, 
             "attention_mask": attention_mask,
             "token_type_ids": token_type_ids,
             "labels": labels,
@@ -142,7 +148,7 @@ class BERTNERDataset(Dataset):
         for s, e in zip(sidxs, eidxs):
             if s in offset2sidx and e in offset2eidx and offset2eidx[e] < max_len:
                 span_token_idxs.append((offset2sidx[s], offset2eidx[e]))
-                valid_span_words.append(words[span_idxs[n][0]:span_idxs[n][1]+1])
+                valid_span_words.append(words[span_idxs[n][0]:span_idxs[n][1] + 1])
             n += 1
         return span_token_idxs, valid_span_words, span_new_label
         print(f"加载验证样本总数：{len(self.samples)}")
