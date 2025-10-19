@@ -21,6 +21,8 @@ sentences = re.split(r'(?<=[。\n])', text)
 # 将句子和实体映射为新的格式
 new_data = []
 current_index = 0
+labels = set([entity['label'] for entity in entities])
+print(f"识别到的实体标签有: {labels}")
 
 for sentence in sentences:
     sentence_entities = []
@@ -31,7 +33,7 @@ for sentence in sentences:
             entity_end = entity['end'] - current_index
             sentence_entities.append([entity['text'], entity['label'], [entity_start, entity_end-1]])
     # 如果句子不为空，添加到新的数据列表中
-    if sentence.strip() and sentence_entities:
+    if sentence.strip() and sentence_entities != []:
         new_data.append({
             "sentences": sentence.strip(),
             "ner": sentence_entities
@@ -56,12 +58,16 @@ for item in new_data:
                 [e[0], e[1], [e[2][0] - start_index, e[2][1] - start_index]]
                 for e in current_ner if start_index <= e[2][0] < end_index
             ]
-            if sub_sentence.strip():
+            if sub_sentence.strip() and sub_sentence_entities != []:
                 final_data.append({
                     "sentences": sub_sentence.strip(),
                     "ner": sub_sentence_entities
                 })
             start_index = end_index
+
+print(len(final_data))
+final_data = [i for i in final_data if i['ner']!= []]
+print(len(final_data))
 
 # 写入新的JSON格式文件
 with open('dataprocess/converted_train.json', 'w', encoding='utf-8') as f:
@@ -83,11 +89,11 @@ dev_idx = sample_idx[train_split:dev_split]
 test_idx = sample_idx[dev_split:]
 
 os.makedirs('data/test1', exist_ok=True)
-with open('data/test1/train', 'w', encoding='utf-8') as f:
+with open('data/test1/spanner.train', 'w', encoding='utf-8') as f:
     json.dump([final_data[i] for i in train_idx], f, ensure_ascii=False, indent=2)
-with open('data/test1/dev', 'w', encoding='utf-8') as f:
+with open('data/test1/spanner.dev', 'w', encoding='utf-8') as f:
     json.dump([final_data[i] for i in dev_idx], f, ensure_ascii=False, indent=2)
-with open('data/test1/test', 'w', encoding='utf-8') as f:
+with open('data/test1/spanner.test', 'w', encoding='utf-8') as f:
     json.dump([final_data[i] for i in test_idx], f, ensure_ascii=False, indent=2)
 
 print("数据集划分完成，训练集、验证集和测试集保存在 data/test1 目录中")
