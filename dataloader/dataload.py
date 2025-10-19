@@ -21,6 +21,7 @@ class BERTNERDataset(Dataset):
         self.pad_to_maxlen = pad_to_maxlen
         self.possible_only = possible_only
         self.all_data = json.load(open(json_path, encoding="utf-8"))
+        self.labels = ['unknown', 'breed', 'usage', 'concept', 'skill', 'tool']
 
         if self.possible_only:
             self.all_data = [x for x in self.all_data if x.get("start_position")]
@@ -30,6 +31,8 @@ class BERTNERDataset(Dataset):
         self.max_num_span = self.max_length * self.max_span_len - minus
         self.dataname = self.args.dataname
         self.spancase2idx_dic = {}
+
+        self.empty_ner_list = 0
 
     def __len__(self):
         return len(self.all_data)
@@ -44,6 +47,9 @@ class BERTNERDataset(Dataset):
         ner_list = data.get("ner", [])
         pos_span_idxs = []
 
+        valid_entities = 0
+
+        span_labels = []
         try:  # 处理非法的 span
             for text, label, span in ner_list:
                 start, end = span
@@ -52,16 +58,36 @@ class BERTNERDataset(Dataset):
                 if context[start:end + 1] != text:
                     raise ValueError(f"实体 {text} 与上下文不匹配: {context[start:end + 1]}")
                 pos_span_idxs.append((start, end))
+                valid_entities += 1
+                if label not in self.labels:
+                    span_labels.append(0)
+                else:
+                    span_labels.append(self.labels.index(label) + 1)
         except Exception as e:
             print(f"出错样本 index: {idx}")
             print(f"内容片段: {context}")
             print(f"ner_list: {ner_list}")
             raise e
 
+        if valid_entities == 0:
+            self.empty_ner_list += 1
+            print(f"出错样本 index: {idx}")
+            print(f"内容片段: {context}")
+            print(f"ner_list: {ner_list}")
+            print(f'发现{self.empty_ner_list}个')
+            # raise ValueError("没有有效的实体")
+
         all_span_idxs = pos_span_idxs
         all_span_weights = [1.0] * len(all_span_idxs)  # 权重默认全部为 1.0
         all_span_lens = [int(e) - int(s) + 1 for s, e in all_span_idxs]  # 实体长度
-        morph_idxs = [[0] * self.max_span_len for _ in all_span_idxs]  # 生成默认全 0 的向量
+        if not all_span_idxs:
+            # 如果没有实体，创建一个空的但具有正确维度的 morph_idxs 和 span_labels
+            morph_idxs = []
+            # span_labels = []
+        else:
+            morph_idxs = [[0] * self.max_span_len for _ in all_span_idxs]  # 生成默认全 0 的向量
+        # 将列表转换为张量
+        span_labels = torch.tensor(span_labels, dtype=torch.long) if span_labels else torch.tensor([], dtype=torch.long)
 
         # 使用 transformers 的 encode_plus 将句子编码为 BERT 所需的格式
         # 生成 输入, 遮罩, 标签
@@ -89,10 +115,11 @@ class BERTNERDataset(Dataset):
         #         labels[start_idx:end_idx + 1] = self.args.label2idx.get(label, 0)
 
         return {
-            "input_ids": input_ids, 
+            "input_ids": input_ids,
             "attention_mask": attention_mask,
             "token_type_ids": token_type_ids,
-            "labels": labels,
+            # "labels": labels,
+            "labels": span_labels,
 
             "span_idxs": all_span_idxs,
             "span_weights": all_span_weights,
