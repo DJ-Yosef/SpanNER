@@ -184,3 +184,10 @@ dataprocess/wyd2span.py做了这个以及数据集划分7:1:1
 ```bash
 python -m dataprocess.wyd2span
 ```
+
+
+### 部分AI对话
+
+https://chat.deepseek.com/share/ip9evu8vn18m85vr4z
+
+https://fc.fittenlab.cn/?share=20251020_xtaff6lgm
