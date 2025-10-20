@@ -18,6 +18,9 @@ __pycache__/
 .idea/
 
 *.zip
+
+# pre-trained models
+xunzillm/.qwen
 pretrained_model/*/*.bin
 pretrained_model/*/*.msgpack
 pretrained_model/*/*.safetensors
