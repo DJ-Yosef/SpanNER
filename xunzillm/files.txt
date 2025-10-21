@@ -1,0 +1,6 @@
+https://www.modelscope.cn/models/Xunzillm4cc/Xunzi-Qwen1.5-7B_chat/resolve/master/model-00010-of-00016.safetensors
+https://www.modelscope.cn/models/Xunzillm4cc/Xunzi-Qwen1.5-7B_chat/resolve/master/model-00011-of-00016.safetensors
+https://www.modelscope.cn/models/Xunzillm4cc/Xunzi-Qwen1.5-7B_chat/resolve/master/model-00012-of-00016.safetensors
+https://www.modelscope.cn/models/Xunzillm4cc/Xunzi-Qwen1.5-7B_chat/resolve/master/model-00013-of-00016.safetensors
+https://www.modelscope.cn/models/Xunzillm4cc/Xunzi-Qwen1.5-7B_chat/resolve/master/model-00014-of-00016.safetensors
+https://www.modelscope.cn/models/Xunzillm4cc/Xunzi-Qwen1.5-7B_chat/resolve/master/model-00016-of-00016.safetensors
