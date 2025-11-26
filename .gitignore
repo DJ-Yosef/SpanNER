@@ -25,3 +25,7 @@ pretrained_model/*/*.msgpack
 pretrained_model/*/*.safetensors
 pretrained_model/*/*.h5
 xunzillm/.qwen
+fo/model/
+
+# Dataset
+fo/data/
