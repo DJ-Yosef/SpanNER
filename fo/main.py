@@ -1,6 +1,7 @@
 from .trainer import BuddhistPOSTrainer
 from .predictor import BuddhistPOSPredictor
 
+
 def main():
     # 示例：训练模型
     sentences = [

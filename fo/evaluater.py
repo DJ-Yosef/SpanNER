@@ -1,4 +1,5 @@
-from .eval import BuddhistPOSPredictor, BuddhistPOSTrainer
+from .trainer import BuddhistPOSTrainer
+from .predictor import BuddhistPOSPredictor
 
 def evaluate_model(model_path, test_sentences, true_labels):
     """
