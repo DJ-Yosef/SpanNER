@@ -1,7 +1,8 @@
 import numpy as np
 from datasets import Dataset
-from transformers import BertTokenizer, BertForTokenClassification, DataCollatorForTokenClassification, TrainingArguments, Trainer, load_metric
-from .data_processor import BuddhistPOSDataProcessor
+import evaluate
+from transformers import BertTokenizer, BertForTokenClassification, DataCollatorForTokenClassification, TrainingArguments, Trainer
+from data_processor import BuddhistPOSDataProcessor
 
 class BuddhistPOSTrainer:
     def __init__(self, model_name="/sikubert", custom_dict_path=None):
@@ -70,7 +71,8 @@ class BuddhistPOSTrainer:
         )
 
         # 评估指标
-        metric = load_metric("seqeval")
+        # metric = load_metric("seqeval")
+        metric = evaluate.load("seqeval")
 
         def compute_metrics(p):
             predictions, labels = p

@@ -1,7 +1,7 @@
 import torch
 from transformers import BertTokenizer, BertForTokenClassification, TrainingArguments, Trainer
 from transformers import DataCollatorForTokenClassification
-from datasets import Dataset, load_metric
+from datasets import Dataset
 import numpy as np
 from tqdm import tqdm
 import jieba
@@ -9,7 +9,7 @@ import jieba.posseg as pseg
 import re
 
 class BuddhistPOSDataProcessor:
-    def __init__(self, model_name="/sikubert", custom_dict_path=None):
+    def __init__(self, model_name="model/sikubert", custom_dict_path=None):
         """
         初始化佛教文本词性标注数据处理器
 
