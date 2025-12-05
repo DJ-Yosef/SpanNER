@@ -7,15 +7,18 @@ from sklearn.metrics import classification_report
 from torchcrf import CRF
 from torch import nn
 from tqdm import tqdm
+from datetime import datetime
 
 logging.basicConfig(level=logging.INFO)
 
+RUN_TIME_STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
 MODEL_NAME = "model/sikubert"  # 可改为 SikuBERT
-MAX_LEN = 256
+MAX_LEN = 512
 BATCH_SIZE = 8
 EPOCHS = 5
 LR = 3e-5
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+print(f"Using device: {DEVICE}")
 
 # ------------------------- Dataset 读取 ------------------------
 class POSDataset(Dataset):
@@ -52,8 +55,12 @@ class POSDataset(Dataset):
             padding="max_length",
             return_tensors="pt"
         )
-        label_ids = [self.label2id[l] for l in labels] + \
-                    [self.label2id["O"]] * (MAX_LEN - len(labels))
+        # 确保标签长度不超过MAX_LEN
+        label_ids = [self.label2id[l] for l in labels]
+        if len(label_ids) > MAX_LEN:
+            label_ids = label_ids[:MAX_LEN]
+        else:
+            label_ids += [self.label2id["O"]] * (MAX_LEN - len(label_ids))
 
         return {
             "input_ids": encoding["input_ids"].squeeze(),
@@ -81,7 +88,7 @@ class BERT_CRF(nn.Module):
             loss = -self.crf(emissions, labels, mask=attention_mask.bool(), reduction='mean')
             return loss
         else:
-            return self.crf.decode(emissions, mask=attention_mask.bool())
+            return [torch.tensor(seq) for seq in self.crf.decode(emissions, mask=attention_mask.bool())]
 
 # ------------------------- 主程序 ------------------------
 def load_labels(files):
@@ -93,6 +100,7 @@ def load_labels(files):
                 if len(parts) == 2:
                     labels.add(parts[1])
     labels = sorted(list(labels))
+    labels.append("O")  # 添加'O'标签,表示其他
     label2id = {l: i for i, l in enumerate(labels)}
     id2label = {i: l for l, i in label2id.items()}
     return label2id, id2label
@@ -109,7 +117,15 @@ def evaluate(model, dataloader, id2label):
                 t = t[:mask.sum()].tolist()
                 preds.extend([id2label[i] for i in p])
                 trues.extend([id2label[i] for i in t])
-    print(classification_report(trues, preds, digits=4))
+    print(classification_report(trues, preds, digits=4, zero_division=0))
+
+def save_model(model, tokenizer, epoch, run_cnt):
+    time_stamp = RUN_TIME_STAMP
+    save_dir = f"save_model/run_{time_stamp}"
+    os.makedirs(save_dir, exist_ok=True)
+    torch.save(model.state_dict(), os.path.join(save_dir, f"run_{run_cnt}_epoch{epoch+1}.pt"))
+    tokenizer.save_pretrained(save_dir)
+    logging.info(f"模型已保存至 {save_dir}")
 
 def main():
     tokenizer = BertTokenizerFast.from_pretrained(MODEL_NAME)
@@ -123,6 +139,8 @@ def main():
 
     model = BERT_CRF(num_labels).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=LR)
+
+    run_cnt=0
 
     for epoch in range(EPOCHS):
         model.train()
@@ -141,10 +159,10 @@ def main():
         logging.info(f"Epoch {epoch+1} Loss: {total_loss/len(train_loader):.4f}")
 
         evaluate(model, dev_loader, id2label)
-        model.save_pretrained(f"save_model/pos-bert-crf-epoch{epoch+1}")
-        tokenizer.save_pretrained(f"save_model/pos-bert-crf-epoch{epoch+1}")
+        save_model(model, tokenizer, epoch, run_cnt)
+        # tokenizer.save_pretrained(f"save_model/pos-bert-crf-epoch{epoch+1}")
 
 if __name__ == "__main__":
     print("初始化完成")
     pass # TODO
-    # main()
+    main()

@@ -19,13 +19,14 @@ __pycache__/
 
 *.zip
 
-# Pretrained models
+# Models
 pretrained_model/*/*.bin
 pretrained_model/*/*.msgpack
 pretrained_model/*/*.safetensors
 pretrained_model/*/*.h5
 xunzillm/.qwen
 fo/model/
+fo/save_model/
 
 # Dataset
 fo/data/
