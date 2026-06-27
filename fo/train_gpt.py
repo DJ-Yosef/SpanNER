@@ -12,10 +12,10 @@ from datetime import datetime
 logging.basicConfig(level=logging.INFO)
 
 RUN_TIME_STAMP = datetime.now().strftime("%Y%m%d_%H%M%S")
-MODEL_NAME = "model/sikubert"  # 可改为 SikuBERT
-MAX_LEN = 512
-BATCH_SIZE = 8
-EPOCHS = 5
+MODEL_NAME = "model/sikubert"
+MAX_LEN = 480
+BATCH_SIZE = 32
+EPOCHS = 10
 LR = 3e-5
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
 print(f"Using device: {DEVICE}")
@@ -60,7 +60,7 @@ class POSDataset(Dataset):
         if len(label_ids) > MAX_LEN:
             label_ids = label_ids[:MAX_LEN]
         else:
-            label_ids += [self.label2id["O"]] * (MAX_LEN - len(label_ids))
+            label_ids += [self.label2id["PAD"]] * (MAX_LEN - len(label_ids))
 
         return {
             "input_ids": encoding["input_ids"].squeeze(),
@@ -100,7 +100,7 @@ def load_labels(files):
                 if len(parts) == 2:
                     labels.add(parts[1])
     labels = sorted(list(labels))
-    labels.append("O")  # 添加'O'标签,表示其他
+    labels.append("PAD")  # 添加'O'标签,表示假标签填充
     label2id = {l: i for i, l in enumerate(labels)}
     id2label = {i: l for l, i in label2id.items()}
     return label2id, id2label
@@ -117,23 +117,32 @@ def evaluate(model, dataloader, id2label):
                 t = t[:mask.sum()].tolist()
                 preds.extend([id2label[i] for i in p])
                 trues.extend([id2label[i] for i in t])
-    print(classification_report(trues, preds, digits=4, zero_division=0))
+    vailed_labels = set(id2label.values()) - {"PAD", "w"}
+    report = classification_report(trues, preds, digits=4, zero_division=0, labels=list(vailed_labels))
+    print(report)
 
-def save_model(model, tokenizer, epoch, run_cnt):
+    # 记录未预测到的标签
+    unpredicted_labels = set(id2label.values()) - set(trues)
+    if unpredicted_labels:
+        logging.warning(f"未预测到的标签: {unpredicted_labels}")
+
+    # return report["weighted avg"]["f1-score"]
+
+def save_model(model, tokenizer, epoch, run_cnt, model_name=MODEL_NAME):
     time_stamp = RUN_TIME_STAMP
-    save_dir = f"save_model/run_{time_stamp}"
+    save_dir = f"save_model/{model_name}_run_{time_stamp}"
     os.makedirs(save_dir, exist_ok=True)
     torch.save(model.state_dict(), os.path.join(save_dir, f"run_{run_cnt}_epoch{epoch+1}.pt"))
     tokenizer.save_pretrained(save_dir)
     logging.info(f"模型已保存至 {save_dir}")
 
-def main():
-    tokenizer = BertTokenizerFast.from_pretrained(MODEL_NAME)
-    label2id, id2label = load_labels(["data/train.txt", "data/dev.txt"])
+def main(train_file="train.txt", dev_file="dev.txt", model_name=MODEL_NAME):
+    tokenizer = BertTokenizerFast.from_pretrained(model_name)
+    label2id, id2label = load_labels([f"data/{train_file}", f"data/{dev_file}"])
     num_labels = len(label2id)
 
-    train_dataset = POSDataset("data/train.txt", tokenizer, label2id)
-    dev_dataset = POSDataset("data/dev.txt", tokenizer, label2id)
+    train_dataset = POSDataset(f"data/{train_file}", tokenizer, label2id)
+    dev_dataset = POSDataset(f"data/{dev_file}", tokenizer=tokenizer, label2id=label2id)
     train_loader = DataLoader(train_dataset, batch_size=BATCH_SIZE, shuffle=True)
     dev_loader = DataLoader(dev_dataset, batch_size=BATCH_SIZE)
 
@@ -164,5 +173,5 @@ def main():
 
 if __name__ == "__main__":
     print("初始化完成")
-    pass # TODO
-    main()
+    # pass # TODO
+    main("train_all.txt", "dev.txt")
